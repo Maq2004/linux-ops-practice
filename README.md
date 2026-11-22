@@ -39,8 +39,9 @@ Nginx :81  ──proxy_pass──▶  Uptime Kuma 127.0.0.1:3001
 │   ├── logclean.sh
 │   └── MysqlRedisBackup.sh
 └── docs/
-    ├── oom-recovery.md
-    └── nginx-502.md
+    └── incidents/
+        ├── oom-recovery.md
+        └── nginx-502.md
 ```
 
 ## 快速开始
@@ -124,8 +125,8 @@ sudo -E bash scripts/MysqlRedisBackup.sh
 
 ## 故障复盘
 
-- [OOM：1.6 GiB ECS 上的容器重启风暴](docs/oom-recovery.md)
-- [Nginx 502：从 502 到 upstream 端口](docs/nginx-502.md)
+- [OOM：1.6 GiB ECS 上的容器重启风暴](docs/incidents/oom-recovery.md)
+- [Nginx 502：从 502 到 upstream 端口](docs/incidents/nginx-502.md)
 
 ## 安全说明
 
