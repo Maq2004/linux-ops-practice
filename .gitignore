@@ -1,0 +1,17 @@
+# secrets
+*.pem
+*.key
+*.crt
+.env
+.env.*
+!.env.example
+
+# runtime data
+data/
+backups/
+uploads/
+*.log
+
+# local
+.DS_Store
+Thumbs.db

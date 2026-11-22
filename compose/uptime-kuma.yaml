@@ -1,0 +1,13 @@
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      # 只绑定本机，公网通过 Nginx 反向代理访问
+      - "127.0.0.1:3001:3001"
+    volumes:
+      # 相对 compose 文件所在目录；备份时连同 data/ 一起打包
+      - ./data:/app/data
+    # 1.6 GiB ECS 上给 Kuma 限内存，避免和 MySQL/Redis 抢内存
+    mem_limit: 256m
