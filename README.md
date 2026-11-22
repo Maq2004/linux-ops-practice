@@ -35,9 +35,9 @@ Nginx :81  ──proxy_pass──▶  Uptime Kuma 127.0.0.1:3001
 ├── deploy/
 │   └── nginx-uptime-kuma.conf
 ├── scripts/
-│   ├── check_nginx.sh
-│   ├── log_clean.sh
-│   └── backup_mysql_redis.sh
+│   ├── script.2026-10-29.sh
+│   ├── logclean.sh
+│   └── MysqlRedisBackup.sh
 └── docs/
     ├── oom-recovery.md
     └── nginx-502.md
@@ -82,6 +82,45 @@ ss -lntp | grep ':81'
 - 云安全组只放行 TCP `81` 给演示来源，**不要放行 3001**。
 - 浏览器打开 `http://<SERVER_IP>:81`。
 - 若公网仍不通，依次查：安全组 → 云防火墙 → 主机 iptables → Nginx 监听 → 后端端口。
+
+## 脚本
+
+三个脚本来自 `Linux学习笔记/学习脚本` 里的实际练习，保留原来的检查项、退出码和保留策略，只做了脱敏与路径参数化；不是另写一套。
+
+### 1. 服务巡检 `scripts/script.2026-10-29.sh`
+
+检查 Nginx、Redis 6379 端口、根分区使用率、内存占用和容器状态。默认阈值：磁盘 80%、内存 1500 MB；容器默认 `redis-lab mysql-lab uptime-kuma`。
+
+```bash
+bash scripts/script.2026-10-29.sh
+CONTAINERS="mysql-lab uptime-kuma" bash scripts/script.2026-10-29.sh 85 1200
+```
+
+有异常时打印 `warning:N` 并退出 1，适合挂 cron 做“有没有问题”的第一层巡检。
+
+### 2. 日志清理 `scripts/logclean.sh`
+
+把 N 天前的 `*.log` 打包到归档目录，校验 tar 包后删除源日志，并只保留最近 K 份归档。
+
+```bash
+# 先改路径再执行；会删除源日志
+SRC=/path/applog DEST=/path/backup/logs DAYS=2 KEEP=7 bash scripts/logclean.sh
+```
+
+默认路径是 `/home/opsM/applog`、`/home/opsM/backup/logs`；`LOG` 可指定日志文件。
+
+### 3. MySQL / Redis 备份 `scripts/MysqlRedisBackup.sh`
+
+`mysqldump` 备份指定库，`zcat + grep "Dump completed on"` 校验；Redis 先 `BGSAVE`，检查 RDB/AOF 状态，再打包数据目录，最后做 `tar -tzf` 解包校验。
+
+```bash
+export REDISCLI_AUTH='<redis-password>'
+sudo -E bash scripts/MysqlRedisBackup.sh
+```
+
+可用环境变量：`MYSQL_CNF`、`MYSQL_DB`、`MYSQL_BACKUP_DIR`、`REDIS_BACKUP_DIR`、`REDIS_DATA_DIR`、`RETENTION_DAYS`。退出码与恢复演练见脚本头部注释。
+
+> 这三个脚本会改文件/删日志/覆盖备份，先在测试目录跑一遍；生产环境把密码放环境变量或密钥管理，不要写进脚本。
 
 ## 故障复盘
 
