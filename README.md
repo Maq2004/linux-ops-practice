@@ -127,18 +127,3 @@ sudo -E bash scripts/MysqlRedisBackup.sh
 
 - [OOM：1.6 GiB ECS 上的容器重启风暴](docs/incidents/oom-recovery.md)
 - [Nginx 502：从 502 到 upstream 端口](docs/incidents/nginx-502.md)
-
-## 安全说明
-
-- 不要提交 `.env`、`*.pem`、`*.key`、日志、数据卷、真实 IP、安全组 ID、客户信息。
-- 示例中的密码只用于本地实验；生产环境请用环境变量或密钥管理。
-- 公网只暴露 Nginx 的演示端口，数据库与 Kuma 管理端口保持本机监听。
-
-## 验证清单
-
-- [ ] `docker compose -f compose/uptime-kuma.yaml ps` 显示 Kuma 为 running
-- [ ] `curl -I http://127.0.0.1:81` 返回 302/200
-- [ ] `curl -IL http://127.0.0.1:81` 最终 200
-- [ ] `bash -n scripts/*.sh` 通过（可选：`shellcheck scripts/*.sh`）
-- [ ] 公网 `http://<SERVER_IP>:81` 可访问
-- [ ] 安全组未放行 3001
