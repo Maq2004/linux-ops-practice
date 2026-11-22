@@ -8,7 +8,7 @@
 |---|---|
 | 云主机 | 阿里云 ECS，1.6 GiB 内存 |
 | 系统 | Ubuntu 22.04 |
-| 容器 | MySQL 8.4、Redis 7.2、Uptime Kuma |
+| 容器 | MySQL 8.0、Redis 7.2、Uptime Kuma |
 | 编排 | Docker Compose |
 | 现象 | SSH 无法 fork、负载升高、`docker ps` 卡住 |
 
@@ -41,6 +41,8 @@ docker stats --no-stream
 - `docker ps` 卡住、容器进程处于 `D` 状态，说明 OOM 之后 Docker/overlay 清理也被拖住了。
 
 ## 根因链
+
+> 触发点是容器内存耗尽触发内核 OOM，不是备份任务；备份脚本缺少执行位是同一时期暴露的另一个问题，两者不要混为一谈。
 
 1. 1.6 GiB 内存同时跑 MySQL、Redis、Uptime Kuma，内存余量太小。
 2. MySQL 的 `innodb_buffer_pool_size` 偏大，mysqld 常驻内存接近 900 MiB。

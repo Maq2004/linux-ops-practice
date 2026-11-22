@@ -99,6 +99,45 @@ curl -IL http://127.0.0.1:81
 # 最终 HTTP/1.1 200 OK
 ```
 
+## 页面一直转圈：curl 200，但浏览器用不了
+
+`curl -I` 返回 200，只能说明 HTTP 响应头正常；如果页面依赖 WebSocket，缺少升级头时浏览器会一直转圈，DevTools 的 Network → WS 里看不到 `101 Switching Protocols`。
+
+Uptime Kuma 的页面依赖 WebSocket。反代 `location /` 至少要补齐：
+
+```nginx
+proxy_http_version 1.1;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection "upgrade";
+proxy_set_header Host $host;
+proxy_read_timeout 3600s;
+```
+
+改完先 `nginx -t`，再 `systemctl reload nginx`。验证时不要只看 curl，打开浏览器 DevTools，确认 WS 连接为 `101`，页面能正常加载。
+
+> 面试里这是个好话题：`curl` 通 ≠ 浏览器可用；HTTP 200 只覆盖了普通请求，WebSocket 还需要协议升级。
+
+## systemd 托管后端与自动拉起
+
+`deploy/ops-demo.service` 是一个最小示例，托管 Python `http.server` 后端：
+
+```bash
+sudo cp deploy/ops-demo.service /etc/systemd/system/ops-demo.service
+# 编辑 User=<user> 和 WorkingDirectory
+sudo systemctl daemon-reload
+sudo systemctl enable --now ops-demo
+systemctl status ops-demo
+journalctl -u ops-demo -n 30
+
+# 验证 on-failure：kill 后 MainPID 变化
+sudo systemctl kill -s KILL ops-demo
+sleep 2
+systemctl status ops-demo
+systemctl show -p MainPID --value ops-demo
+```
+
+`Restart=on-failure` 不会在 `systemctl stop` 后拉起；被信号杀死或非 0 退出才会。生产环境用专用低权限用户，不要用 root。
+
 ## HTTPS：实验环境自签
 
 生产环境应使用 Let's Encrypt/ACME 或云证书；本仓库只记录实验环境的自签证书，不伪造真域名证书。
@@ -124,7 +163,12 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 3600s;
     }
 }
 

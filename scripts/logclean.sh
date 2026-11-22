@@ -5,11 +5,11 @@
 
 set -u
 
-LOG="${LOG:-/home/opsM/script/logclean.log}"
-SRC="${SRC:-/home/opsM/applog}"          # 日志存在的路径
-DAYS="${DAYS:-2}"                       # 一次性压缩几天的
-DEST="${DEST:-/home/opsM/backup/logs}"  # 压缩日志存到哪里
-KEEP="${KEEP:-7}"                       # 归档保留几份
+LOG="${LOG:-$HOME/script/logclean.log}"
+SRC="${SRC:-$HOME/applog}"          # 日志存在的路径
+DAYS="${DAYS:-2}"                  # 一次性压缩几天的
+DEST="${DEST:-$HOME/backup/logs}"  # 压缩日志存到哪里
+KEEP="${KEEP:-7}"                  # 归档保留几份
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT

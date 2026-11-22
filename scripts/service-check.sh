@@ -1,6 +1,6 @@
 #!/bin/bash
 # 服务巡检：Nginx / Redis 端口 / 磁盘 / 内存 / 容器
-# 用法：./script.2026-10-29.sh [磁盘阈值百分比] [内存阈值MB]
+# 用法：./service-check.sh [磁盘阈值百分比] [内存阈值MB]
 # 环境变量：CONTAINERS="redis-lab mysql-lab uptime-kuma"
 # 退出码：0=全部正常，1=有告警，2=参数非法
 

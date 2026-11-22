@@ -6,7 +6,7 @@
 
 ## 背景
 
-- 1.6 GiB 内存的阿里云 ECS，运行 MySQL 8.4、Redis 7.2、Uptime Kuma 三个容器。
+- 1.6 GiB 内存的阿里云 ECS，运行 MySQL 8.0、Redis 7.2、Uptime Kuma 三个容器。
 - 一次内存耗尽导致 SSH 无法 fork、Docker 清理卡住；恢复后补上 Nginx 反向代理与可用性监控。
 - 目标不是把服务跑起来，是能说明：怎么发现、怎么定位、怎么验证、怎么避免再次发生。
 
@@ -16,26 +16,31 @@
 Browser
   │  HTTP :81
   ▼
-Nginx :81  ──proxy_pass──▶  Uptime Kuma 127.0.0.1:3001
-                                  │
-                                  ├─ MySQL 8.4 (Docker)
-                                  └─ Redis 7.2 (Docker)
+Nginx :81  ──proxy_pass──▶  Uptime Kuma 127.0.0.1:3001 (SQLite)
+
+独立练习服务（与 Kuma 无依赖关系）:
+  MySQL 8.0  127.0.0.1:3306
+  Redis 7.2  127.0.0.1:6379
 ```
 
-> MySQL / Redis 是同一台 ECS 上的练习服务；Uptime Kuma 只负责站点可用性监控，不直接监控数据库指标。数据库的 compose 为避免环境差异和凭据泄露不放进仓库，OOM 复盘里保留了关键参数，可按需自行复现。
+> MySQL / Redis 是与 Kuma 并列的独立练习服务，不是 Kuma 的后端；Kuma 默认使用 SQLite。数据库 compose 见 `compose/mysql-redis.yaml`，与 OOM 复盘中的 96M buffer pool、内存限额对应。
 
 ## 目录
 
 ```text
 .
 ├── README.md
+├── .env.example
+├── .gitattributes
 ├── .gitignore
 ├── compose/
+│   ├── mysql-redis.yaml
 │   └── uptime-kuma.yaml
 ├── deploy/
-│   └── nginx-uptime-kuma.conf
+│   ├── nginx-uptime-kuma.conf
+│   └── ops-demo.service
 ├── scripts/
-│   ├── script.2026-10-29.sh
+│   ├── service-check.sh
 │   ├── logclean.sh
 │   └── MysqlRedisBackup.sh
 └── docs/
@@ -46,7 +51,18 @@ Nginx :81  ──proxy_pass──▶  Uptime Kuma 127.0.0.1:3001
 
 ## 快速开始
 
-### 1. 启动 Uptime Kuma
+### 1. 启动 MySQL / Redis（独立练习服务）
+
+```bash
+cp .env.example .env
+# 编辑 .env，替换 change_me_*；.env 已被 .gitignore 排除
+docker compose --env-file .env -f compose/mysql-redis.yaml up -d
+docker compose --env-file .env -f compose/mysql-redis.yaml ps
+```
+
+MySQL 8.0 + Redis 7.2，均只绑定 `127.0.0.1`；MySQL 使用 96M buffer pool 且关闭 `performance_schema`，与 OOM 复盘中的修复一致。1.6 GiB 实验机的内存预算见 `mem_limit`，重启策略用 `on-failure:3` 避免 OOM 后反复拉起；这些值不要直接照搬到生产。
+
+### 2. 启动 Uptime Kuma
 
 ```bash
 docker compose -f compose/uptime-kuma.yaml up -d
@@ -55,7 +71,7 @@ docker compose -f compose/uptime-kuma.yaml ps
 
 Kuma 只绑定 `127.0.0.1:3001`，不直接暴露到公网。数据保存在 `compose/data/`。
 
-### 2. 配置 Nginx 反向代理
+### 3. 配置 Nginx 反向代理
 
 ```bash
 sudo cp deploy/nginx-uptime-kuma.conf /etc/nginx/sites-available/uptime-kuma
@@ -66,7 +82,28 @@ sudo systemctl reload nginx
 
 如果 81 端口已被占用，改 `deploy/nginx-uptime-kuma.conf` 里的 `listen`，并同步修改安全组。
 
-### 3. 本机验证
+### 4. systemd 托管后端（可选）
+
+示例 unit 在 `deploy/ops-demo.service`，演示 systemd 托管一个 Python `http.server` 后端：
+
+```bash
+sudo cp deploy/ops-demo.service /etc/systemd/system/ops-demo.service
+# 编辑 User=<user> 和 WorkingDirectory
+sudo systemctl daemon-reload
+sudo systemctl enable --now ops-demo
+systemctl status ops-demo
+journalctl -u ops-demo -n 30
+
+# 验证 on-failure 自动拉起：MainPID 会变化
+sudo systemctl kill -s KILL ops-demo
+sleep 2
+systemctl status ops-demo
+systemctl show -p MainPID --value ops-demo
+```
+
+`Restart=on-failure` 只在非 0 退出或被信号杀死时拉起；`systemctl stop` 不会拉起。生产环境把 `User` 改为专用低权限用户，不要用 root。
+
+### 5. 本机验证
 
 ```bash
 curl -I http://127.0.0.1:81
@@ -78,7 +115,7 @@ curl -IL http://127.0.0.1:81
 ss -lntp | grep ':81'
 ```
 
-### 4. 公网访问
+### 6. 公网访问
 
 - 云安全组只放行 TCP `81` 给演示来源，**不要放行 3001**。
 - 浏览器打开 `http://<SERVER_IP>:81`。
@@ -86,13 +123,13 @@ ss -lntp | grep ':81'
 
 ## 脚本
 
-### 1. 服务巡检 `scripts/script.2026-10-29.sh`
+### 1. 服务巡检 `scripts/service-check.sh`
 
 检查 Nginx、Redis 6379 端口、根分区使用率、内存占用和容器状态。默认阈值：磁盘 80%、内存 1500 MB；容器默认 `redis-lab mysql-lab uptime-kuma`。
 
 ```bash
-bash scripts/script.2026-10-29.sh
-CONTAINERS="mysql-lab uptime-kuma" bash scripts/script.2026-10-29.sh 85 1200
+bash scripts/service-check.sh
+CONTAINERS="mysql-lab uptime-kuma" bash scripts/service-check.sh 85 1200
 ```
 
 有异常时打印 `warning:N` 并退出 1，适合挂 cron 做“有没有问题”的第一层巡检。
@@ -106,7 +143,7 @@ CONTAINERS="mysql-lab uptime-kuma" bash scripts/script.2026-10-29.sh 85 1200
 SRC=/path/applog DEST=/path/backup/logs DAYS=2 KEEP=7 bash scripts/logclean.sh
 ```
 
-默认路径是 `/home/opsM/applog`、`/home/opsM/backup/logs`；`LOG` 可指定日志文件。
+默认路径是 `$HOME/applog`、`$HOME/backup/logs`；`LOG` 可指定日志文件。cron 里请写实际用户路径，例如 `/home/<user>/applog`。
 
 ### 3. MySQL / Redis 备份 `scripts/MysqlRedisBackup.sh`
 

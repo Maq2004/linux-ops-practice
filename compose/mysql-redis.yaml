@@ -1,0 +1,61 @@
+name: ops-lab
+
+services:
+  mysql:
+    # 与本机实际环境一致：MySQL 8.0
+    image: mysql:8.0
+    container_name: mysql-lab
+    # OOM 复盘：不要用 restart: always 形成重启风暴；失败 3 次后停止
+    restart: on-failure:3
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-lab}"
+      MYSQL_USER: "${MYSQL_USER:-lab}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}"
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql-lab-data:/var/lib/mysql
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --innodb-buffer-pool-size=96M
+      --performance-schema=OFF
+    # 1.6 GiB 实验机上的内存预算；生产不要照抄这个值
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --silent"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7.2
+    container_name: redis-lab
+    # 同上：限制重启次数，避免 OOM 后反复拉起
+    restart: on-failure:3
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"
+      # redis-cli 会读取该变量，健康检查不用把密码写进命令行
+      REDISCLI_AUTH: "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-lab-data:/data
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mysql-lab-data:
+  redis-lab-data:

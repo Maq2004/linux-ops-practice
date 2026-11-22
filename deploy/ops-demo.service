@@ -1,0 +1,16 @@
+# 复制到 /etc/systemd/system/ops-demo.service
+# 把 <user> 改成实际运行用户，WorkingDirectory 改成实际目录
+[Unit]
+Description=Ops demo backend (Python http.server)
+After=network.target
+
+[Service]
+Type=simple
+User=<user>
+WorkingDirectory=/opt/ops-demo
+ExecStart=/usr/bin/python3 -m http.server 8081 --bind 127.0.0.1
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

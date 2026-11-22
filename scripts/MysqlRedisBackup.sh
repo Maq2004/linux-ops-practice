@@ -8,11 +8,11 @@
 #   sudo -E bash scripts/MysqlRedisBackup.sh
 #
 # 依赖：mysqldump / gzip / zcat / redis-cli / tar / find
-# MySQL 凭据：默认 /home/opsM/.my.cnf（权限 600），通过 --defaults-extra-file 传入
+# MySQL 凭据：默认 $HOME/.my.cnf（权限 600），通过 --defaults-extra-file 传入
 # Redis 凭据：从环境变量 REDISCLI_AUTH 读取，不写在脚本和命令行里
 #
 # 定时（root）：
-#   0 3 * * * /home/opsM/script/MysqlRedisBackup.sh >> /home/opsM/script/backup.cron.log 2>&1
+#   0 3 * * * /home/<user>/script/MysqlRedisBackup.sh >> /home/<user>/script/backup.cron.log 2>&1
 #
 # 恢复演练（备份 ≠ 可恢复）：
 #   MySQL：先导到替身库再比对，禁止直接灌回生产。
@@ -29,10 +29,10 @@ export REDISCLI_AUTH
 
 TIME=$(date +%F_%H%M)
 
-MYSQL_CNF="${MYSQL_CNF:-/home/opsM/.my.cnf}"
+MYSQL_CNF="${MYSQL_CNF:-$HOME/.my.cnf}"
 MYSQL_DB="${MYSQL_DB:-lab}"
-MYSQL_BACKUP_DIR="${MYSQL_BACKUP_DIR:-/home/opsM/mysqlBackup}"
-REDIS_BACKUP_DIR="${REDIS_BACKUP_DIR:-/home/opsM/redisBackup}"
+MYSQL_BACKUP_DIR="${MYSQL_BACKUP_DIR:-$HOME/mysqlBackup}"
+REDIS_BACKUP_DIR="${REDIS_BACKUP_DIR:-$HOME/redisBackup}"
 REDIS_DATA_DIR="${REDIS_DATA_DIR:-/data/redis/data}"
 RETENTION_DAYS="${RETENTION_DAYS:-6}" # -mtime +6，约保留 7 天
 
