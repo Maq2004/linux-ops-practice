@@ -6,27 +6,27 @@
 
 ```text
 Browser
-  │  http://<SERVER_IP>:81
+  │  https://<SERVER_IP>
   ▼
-Nginx :81
+Nginx :443 SSL
   │  proxy_pass http://127.0.0.1:3001
   ▼
 Uptime Kuma :3001
 ```
 
-Nginx 只监听演示端口 81，Kuma 只监听 `127.0.0.1:3001`，不直接把 3001 暴露到公网。
+Nginx 只监听 443 SSL，Kuma 只监听 `127.0.0.1:3001`，不直接把 3001 暴露到公网。
 
 ## 复现 502
 
 先确认 Nginx 正常，再停掉后端：
 
 ```bash
-curl -I http://127.0.0.1:81
+curl -k -I https://127.0.0.1/
 # HTTP/1.1 200 OK / 302 Found
 
 docker stop uptime-kuma
 
-curl -I http://127.0.0.1:81
+curl -k -I https://127.0.0.1/
 # HTTP/1.1 502 Bad Gateway
 ```
 
@@ -54,7 +54,7 @@ sudo systemctl status nginx
 sudo nginx -t
 
 # 2. 本机端口
-sudo ss -lntp | grep -E ':(81|3001)\b'
+sudo ss -lntp | grep -E ':(443|3001)\b'
 
 # 3. 直接访问后端
 curl -v http://127.0.0.1:3001/
@@ -66,8 +66,8 @@ docker logs --tail 100 uptime-kuma
 
 判断：
 
-- 81 没监听：Nginx 没启动/配置没加载/端口冲突。
-- 81 监听但 3001 没监听：Kuma 容器没起来。
+- 443 没监听：Nginx 没启动/配置没加载/端口冲突。
+- 443 监听但 3001 没监听：Kuma 容器没起来。
 - 3001 监听但 `curl` 失败：Kuma 进程内部报错，看容器日志。
 - 两者都正常但公网 502：检查安全组、云防火墙、主机 iptables 和 Nginx 的 upstream 地址。
 
@@ -78,7 +78,7 @@ docker start uptime-kuma
 curl -I http://127.0.0.1:3001/
 sudo nginx -t
 sudo systemctl reload nginx
-curl -I http://127.0.0.1:81
+curl -k -I https://127.0.0.1/
 ```
 
 `reload` 是平滑重载，不会断开已有连接；改配置后先用 `nginx -t`，不要直接 restart。
@@ -95,7 +95,7 @@ Location: /dashboard
 这是应用自己的重定向，不是 Nginx 报错。跟随重定向：
 
 ```bash
-curl -IL http://127.0.0.1:81
+curl -k -IL https://127.0.0.1/
 # 最终 HTTP/1.1 200 OK
 ```
 
@@ -138,7 +138,7 @@ systemctl show -p MainPID --value ops-demo
 
 `Restart=on-failure` 不会在 `systemctl stop` 后拉起；被信号杀死或非 0 退出才会。生产环境用专用低权限用户，不要用 root。
 
-## HTTPS：实验环境自签
+## 证书准备（实验环境自签）
 
 生产环境应使用 Let's Encrypt/ACME 或云证书；本仓库只记录实验环境的自签证书，不伪造真域名证书。
 
@@ -151,7 +151,7 @@ sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -addext "subjectAltName=DNS:demo.test,IP:<SERVER_IP>"
 ```
 
-Nginx 增加 443 server，并把 80 的测试域名跳转到 HTTPS：
+Nginx 使用 443 SSL server；本环境 80 被 Apache 占用，不做 80→443 跳转，证书路径按实际替换：
 
 ```nginx
 server {
@@ -160,6 +160,7 @@ server {
 
     ssl_certificate     /etc/nginx/ssl/demo.crt;
     ssl_certificate_key /etc/nginx/ssl/demo.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
 
     location / {
         proxy_pass http://127.0.0.1:3001;
@@ -170,12 +171,6 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_read_timeout 3600s;
     }
-}
-
-server {
-    listen 80;
-    server_name demo.test;
-    return 301 https://$host$request_uri;
 }
 ```
 
@@ -192,7 +187,7 @@ openssl s_client -connect 127.0.0.1:443 -servername demo.test </dev/null 2>/dev/
 
 | 层 | 典型现象 | 检查 |
 |---|---|---|
-| 云安全组/云防火墙 | 超时、连接被拒绝 | 入方向是否放行 TCP 81 |
+| 云安全组/云防火墙 | 超时、连接被拒绝 | 入方向是否放行 TCP 443 |
 | 主机 iptables/firewalld | 本机通、外部不通 | `iptables -S`、`firewall-cmd --list-all` |
 | Nginx | 502/404/301 | `nginx -t`、error.log、`ss -lntp` |
 | upstream | 502/connection refused | `curl -v 127.0.0.1:3001`、容器日志 |

@@ -2,6 +2,8 @@
 
 个人 Linux / 云服务器运维练习仓库：一次真实的 OOM 故障、Nginx 反向代理与 502 排障、Docker Compose + Uptime Kuma 部署整理成可复现的记录。
 
+Uptime Kuma 使用内置 **SQLite**（容器内 `/app/data/kuma.db`）保存监控配置与心跳历史；MySQL / Redis 是同一 Docker 自定义网络中的独立练习服务，Kuma 仅通过 **TCP Port** 监控其端口可用性，不把它们作为存储后端。
+
 > 仓库内所有公网 IP、域名、密码、私钥均已替换为占位符，不含真实生产凭证。
 
 ## 背景
@@ -14,16 +16,22 @@
 
 ```text
 Browser
-  │  HTTP :81
+  │  HTTPS :443
   ▼
-Nginx :81  ──proxy_pass──▶  Uptime Kuma 127.0.0.1:3001 (SQLite)
+Nginx :443 SSL（宿主机）
+  │  proxy_pass 127.0.0.1:3001
+  ▼
+Uptime Kuma :3001 ── 内置 SQLite（/app/data/kuma.db）
 
-独立练习服务（与 Kuma 无依赖关系）:
-  MySQL 8.0  127.0.0.1:3306
-  Redis 7.2  127.0.0.1:6379
+Docker 自定义网络 <network-name>
+  ├─ uptime-kuma :3001
+  ├─ mysql-lab :3306   ← TCP Port 监控，不是 Kuma 的存储后端
+  └─ redis-lab :6379   ← TCP Port 监控，不是 Kuma 的存储后端
 ```
 
-> MySQL / Redis 是与 Kuma 并列的独立练习服务，不是 Kuma 的后端；Kuma 默认使用 SQLite。数据库 compose 见 `compose/mysql-redis.yaml`，与 OOM 复盘中的 96M buffer pool、内存限额对应。
+> Kuma 的存储是容器内的 SQLite 文件，不是 MySQL / Redis；TCP Port 监控只能证明端口能连上，不代表数据库查询或认证正常。数据库 compose 见 `compose/mysql-redis.yaml`，与 OOM 复盘中的 96M buffer pool、内存限额对应。
+
+> 实际部署可把三个容器加入同一个自定义网络，3306 / 6379 不需要发布到宿主机或公网；仓库里的 compose 为便于本机复现，默认保留 `127.0.0.1:3306/6379` 映射，实际服务器可去掉这些 host 端口，改为共享 Docker 网络，Kuma 用容器名访问。
 
 ## 目录
 
@@ -55,7 +63,6 @@ Nginx :81  ──proxy_pass──▶  Uptime Kuma 127.0.0.1:3001 (SQLite)
 
 ```bash
 cp .env.example .env
-# 编辑 .env，替换 change_me_*；.env 已被 .gitignore 排除
 docker compose --env-file .env -f compose/mysql-redis.yaml up -d
 docker compose --env-file .env -f compose/mysql-redis.yaml ps
 ```
@@ -80,7 +87,9 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-如果 81 端口已被占用，改 `deploy/nginx-uptime-kuma.conf` 里的 `listen`，并同步修改安全组。
+配置默认监听 `443 ssl`，证书路径是 `/etc/nginx/ssl/kuma.crt` 和 `/etc/nginx/ssl/kuma.key`；实验环境自签证书的生成命令见 `docs/incidents/nginx-502.md` 的“证书准备”，真实证书替换路径即可。
+
+如果 443 已被占用，改 `deploy/nginx-uptime-kuma.conf` 里的 `listen`，并同步修改安全组；
 
 ### 4. systemd 托管后端（可选）
 
@@ -106,19 +115,21 @@ systemctl show -p MainPID --value ops-demo
 ### 5. 本机验证
 
 ```bash
-curl -I http://127.0.0.1:81
+curl -k -I https://127.0.0.1/
 # HTTP/1.1 302 Found，Location: /dashboard 是正常跳转，不是错误
 
-curl -IL http://127.0.0.1:81
+curl -k -IL https://127.0.0.1/
 # 最终 HTTP/1.1 200 OK
 
-ss -lntp | grep ':81'
+ss -lntp | grep ':443'
 ```
+
+> 自签证书需要 `-k` 跳过证书校验；换成受信任证书后可去掉 `-k`。
 
 ### 6. 公网访问
 
-- 云安全组只放行 TCP `81` 给演示来源，**不要放行 3001**。
-- 浏览器打开 `http://<SERVER_IP>:81`。
+- 云安全组只放行 TCP `443` 给演示来源。
+- 浏览器打开 `https://<SERVER_IP>`；自签证书会提示“不安全”，实验环境继续访问即可。
 - 若公网仍不通，依次查：安全组 → 云防火墙 → 主机 iptables → Nginx 监听 → 后端端口。
 
 ## 脚本
