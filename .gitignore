@@ -15,3 +15,8 @@ uploads/
 # local
 .DS_Store
 Thumbs.db
+
+# ansible
+.ansible/
+*.retry
+.vault_pass
