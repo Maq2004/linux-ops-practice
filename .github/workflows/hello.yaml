@@ -32,15 +32,20 @@ jobs:
         id: vars
         run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+      - name: 计算镜像名
+        id: images
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' ':lower:')
+          echo "name=ghcr.io/${OWNER}/ops-demo:${{ steps.vars.outputs.short_sha }}" >> "$GITHUB_OUTPUT"
+
       - name: 构建镜像
         run: |
 
-          IMAGE=ghcr.io/${{ github.repository_owner }}/ops-demo:${{ steps.vars.outputs.short_sha }}
-          docker build -t "$IMAGE" ./ansible-lab/target
+          docker build -t "${{ steps.images.outputs.name }}" ./ansible-lab/target
           docker images | grep ops-demo
 
       - name: 登录GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: 推送镜像
-        run: docker push ghcr.io/${{ github.repository_owner }}/ops-demo:${{ steps.vars.outputs.short_sha }}
+        run: docker push "${{ steps.images.outputs.name }}"
