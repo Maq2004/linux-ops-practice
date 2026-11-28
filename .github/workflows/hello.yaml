@@ -1,4 +1,7 @@
 name: hello-ci
+permissions:
+  contents: read
+  packages: write
 
 on: 
   push:
@@ -31,6 +34,13 @@ jobs:
 
       - name: 构建镜像
         run: |
-          docker build -t ops-demo:${{ steps.vars.outputs.short_sha }} ./ansible-lab/target
+
+          IMAGE=ghcr.io/${{ github.repository_owner }}/ops-demo:${{ steps.vars.outputs.short_sha }}
+          docker build -t "$IMAGE" ./ansible-lab/target
           docker images | grep ops-demo
 
+      - name: 登录GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: 推送镜像
+        run: docker push ghcr.io/${{ github.repository_owner }}/ops-demo:${{ steps.vars.outputs.short_sha }}
