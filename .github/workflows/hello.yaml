@@ -1,0 +1,27 @@
+name: hello-ci
+
+on: 
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  env-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 查看工作目录
+        run: ls -la
+
+      - name: 查看docker
+        run: docker version
+
+      - name: 谁在跑
+        run: |
+          echo "repo     : $GITHUB_REPOSITORY"
+          echo "commit   : $GITHUB_SHA"
+          echo "branch   : $GITHUB_REF_NAME"
+          echo "runner   : $RUNNER_OS"
+
