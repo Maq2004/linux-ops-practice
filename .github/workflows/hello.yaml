@@ -35,7 +35,7 @@ jobs:
       - name: 计算镜像名
         id: images
         run: |
-          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' ':lower:')
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           echo "name=ghcr.io/${OWNER}/ops-demo:${{ steps.vars.outputs.short_sha }}" >> "$GITHUB_OUTPUT"
 
       - name: 构建镜像
